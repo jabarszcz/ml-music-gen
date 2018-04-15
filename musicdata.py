@@ -1,45 +1,120 @@
 import librosa
+import torch
 import numpy as np
 from torch.utils.data import *
 
 import spectrogram
 
-class MusicDataset(Dataset):
-    """A dataset class to load the STFT'ed samples"""
+class STFT:
+    """A simple class to encapsulate a signal and its STFT transformation"""
+    def __init__(self, filter_len=2048, hop_len=None,
+                 signal=None, filename=None, samplerate=None, deltas=True):
+        self.filter_len = filter_len
+        self.hop_len = hop_len
+        self.samplerate = samplerate
+        self.deltas = deltas
+        if signal is not None:
+            self.set_signal(signal)
+        elif filename is not None:
+            self.load(filename)
 
-    def __init__(self, input_file, filter_len=2048, hop_len=None):
-        self.filter_len, self.hop_len = filter_len, hop_len
-        self.samples, self.rate = librosa.load(input_file, sr=None)
-        self.stfted = librosa.stft(
-            self.samples,
-            n_fft=filter_len,
-            hop_length=hop_len
+    def set_signal(self, signal):
+        self.signal = signal
+        self.stfted = self.stft(signal)
+        self.real = self.stft_to_real(self.stfted)
+
+    def load(self, filename):
+        signal, self.samplerate = librosa.load(filename, sr=self.samplerate)
+        self.set_signal(signal)
+
+    def save(self, filename, data=None):
+        real = data if data is not None else self.real
+        signal = self.istft(self.real_to_stft(real))
+        librosa.output.write_wav(filename, signal, self.samplerate)
+
+    def get_freqs(self):
+        return self.real[:,:,0]
+
+    def get_phases(self):
+        return self.real[:,:,1]
+
+    def get_tensor(self):
+        return self.real_to_tensor(self.real)
+
+    def stft(self, signal=None):
+        return librosa.stft(
+            signal if signal is not None else self.signal,
+            n_fft=self.filter_len,
+            hop_length=self.hop_len
         )
-        c_ordered = np.ascontiguousarray(self.stfted.T)
-        self.data = c_ordered.view(np.float32).reshape(c_ordered.shape + (2,))
 
-    def __len__(self):
-        return self.data.shape[0]
-
-    def __getitem__(self, idx):
-        self.data[idx]
-
-    def plot(self, **kwargs):
-        spectrogram.plot(self.stfted, **kwargs)
-
-    def inverse(self, data=None):
-        """Run the inverse of the stft to get back the audio wave"""
+    def istft(self, stfted=None):
         return librosa.istft(
-            data if data else self.stfted,
+            stfted if stfted is not None else self.stfted,
             win_length=self.filter_len,
             hop_length=self.hop_len
         )
 
+    def plot(self, filename=None, show=False):
+        stfted = self.real_to_stft(self.real)
+        spectrogram.plot(stfted, filename=filename, show=show)
+
     def get_loss(self, data=None):
         """Calculate the MSE on the original audio wave"""
-        inv = self.inverse(data)
-        return np.mean((np.resize(self.samples, inv.shape) - inv) ** 2)
+        real = data if data is not None else self.real
+        stfted = self.real_to_stft(self.real)
+        signal = self.istft(stfted)
+        return np.mean(
+            (np.resize(self.signal, signal.shape) - signal) ** 2
+        )
 
-def make_music_set(inputs, filter_len, hop_len):
-    music_sets = [MusicDataset(i, filter_len, hop_len) for i in inputs]
-    return ConcatDataset(music_sets)
+    def real_to_tensor(self, real):
+        return torch.from_numpy(np.ascontiguousarray(self.to_deltas(real).swapaxes(1,2)))
+
+    def tensor_to_real(self, tensor):
+        return self.from_deltas(tensor.numpy().swapaxes(1,2))
+
+    def to_deltas(self, real):
+        if not self.deltas:
+            return real
+        real = real.copy()
+        phases = real[:,:,1]
+        real[:,1:,1] = np.diff(phases, axis=1)
+        return real
+
+    def from_deltas(self, real):
+        if not self.deltas:
+            return real
+        real = real.copy()
+        phases = real[:,:,1]
+        real[:,:,1] = np.cumsum(phases, axis=1)
+        return real
+
+    @staticmethod
+    def stft_to_real(stfted):
+        c_ordered = np.ascontiguousarray(stfted.T)
+        return c_ordered.view(np.float32).reshape(c_ordered.shape + (2,))
+
+    @staticmethod
+    def real_to_stft(real):
+        c_ordered = np.ascontiguousarray(real)
+        return c_ordered.reshape((c_ordered.shape[0], -1)).view(np.complex64).T
+
+
+class STFTDataset(Dataset):
+    """A dataset class to load the STFT'ed samples"""
+
+    def __init__(self, stft):
+        self.stft = stft
+        self.tensor = stft.get_tensor()
+
+    def __len__(self):
+        return self.tensor.shape[0]
+
+    def __getitem__(self, idx):
+        return self.tensor[idx]
+
+
+def concat_stft_dataset(inputs, filter_len, hop_len):
+    sets = [STFTDataset(STFT(filter_len, hop_len, filename=i)) for i in inputs]
+    return ConcatDataset(sets)

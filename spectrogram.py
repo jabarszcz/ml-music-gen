@@ -3,6 +3,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 def plot(stfted, filename=None, show=False):
+    plt.clf()
     librosa.display.specshow(
         librosa.logamplitude(np.abs(stfted)**2, ref_power=np.max),
         y_axis='log', x_axis='time'
