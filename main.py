@@ -8,6 +8,7 @@ import librosa
 
 from experiments import *
 from musicdata import *
+from vae import *
 
 # LOGGING
 logger = logging.getLogger()
@@ -37,6 +38,10 @@ parser.add_argument(
     help="Stride of the overlapping window for FFT"
 )
 parser.add_argument(
+    "-e", "--epochs", type=int, default=None,
+    help="Maximum number of epochs for a run"
+)
+parser.add_argument(
     "--experiments", action="store_true", help="Run data experiments"
 )
 
@@ -51,6 +56,36 @@ def main():
     if args.experiments:
         s = STFT(args.filter_length, args.hop_length, filename=args.inputs[0], deltas=False)
         run_experiments(s)
+
+    if args.epochs:
+        train(args)
+
+def train(args):
+    dataset = concat_stft_dataset(args.inputs, args.filter_length, args.hop_length)
+    data_loader = DataLoader(dataset, 128, shuffle=True)
+
+    vae = VAE(args.filter_length/2 + 1, enable_cuda=args.cuda, filters=16, z_dim=512)
+
+    with open('learning.csv', 'wb') as csvfile:
+        fieldnames = ['epoch', 'epochs', 'iter', 'iters',
+                      'total_loss', 'reconst_loss', 'kl_divergence']
+        writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+        writer.writeheader()
+
+        def write_data(data_dict):
+            writer.writerow(data_dict)
+
+        train_vae(vae, data_loader, args.epochs, 0.03, results_cb=write_data)
+
+    vae.eval()
+    song_dataset = dataset.datasets[0]
+    stft = song_dataset.stft
+    res, mu, log_var = vae(vae.to_var(song_dataset.tensor))
+
+    newstfted = stft.tensor_to_real(res.data)
+    print("loss:", stft.get_loss(newstfted))
+    stft.plot(newstfted, filename="result.png")
+    stft.save("result.wav", data=newstfted)
 
 if __name__ == "__main__":
     main()

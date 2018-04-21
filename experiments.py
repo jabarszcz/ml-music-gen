@@ -43,7 +43,7 @@ def experiment_ctx(stft, name, losses_csv):
     stft.save(wavfile)
     logging.info("Saved experiment %s to %s" % (name, wavfile))
     spectrogramfile = "spectrogram_%s.png" % name
-    stft.plot(spectrogramfile)
+    stft.plot(filename=spectrogramfile)
     logging.info("Saved spectrogram %s to %s" % (name, spectrogramfile))
     loss = stft.get_loss()
     losses_csv.writerow({'name':name, 'losses':loss})

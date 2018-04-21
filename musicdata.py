@@ -21,7 +21,7 @@ class STFT:
     def set_signal(self, signal):
         self.signal = signal
         self.stfted = self.stft(signal)
-        self.real = self.stft_to_real(self.stfted)
+        self.real = self.stft_to_polar(self.stfted)
 
     def load(self, filename):
         signal, self.samplerate = librosa.load(filename, sr=self.samplerate)
@@ -29,7 +29,7 @@ class STFT:
 
     def save(self, filename, data=None):
         real = data if data is not None else self.real
-        signal = self.istft(self.real_to_stft(real))
+        signal = self.istft(self.polar_to_stft(real))
         librosa.output.write_wav(filename, signal, self.samplerate)
 
     def get_freqs(self):
@@ -55,14 +55,15 @@ class STFT:
             hop_length=self.hop_len
         )
 
-    def plot(self, filename=None, show=False):
-        stfted = self.real_to_stft(self.real)
+    def plot(self, data=None, filename=None, show=False):
+        real = data if data is not None else self.real
+        stfted = self.polar_to_stft(real)
         spectrogram.plot(stfted, filename=filename, show=show)
 
     def get_loss(self, data=None):
         """Calculate the MSE on the original audio wave"""
         real = data if data is not None else self.real
-        stfted = self.real_to_stft(self.real)
+        stfted = self.polar_to_stft(real)
         signal = self.istft(stfted)
         return np.mean(
             (np.resize(self.signal, signal.shape) - signal) ** 2
@@ -89,6 +90,15 @@ class STFT:
         phases = real[:,:,1]
         real[:,:,1] = np.cumsum(phases, axis=1)
         return real
+
+    @staticmethod
+    def stft_to_polar(stfted):
+        stfted = stfted.T
+        return np.stack([np.abs(stfted), np.angle(stfted)], axis=2)
+
+    @staticmethod
+    def polar_to_stft(real):
+        return (real[:,:,0] * np.exp(1j*real[:,:,1])).T
 
     @staticmethod
     def stft_to_real(stfted):
