@@ -56,10 +56,10 @@ class VAE(nn.Module):
         if enable_cuda:
             self.cuda()
 
-    def to_var(self, x):
+    def to_var(self, x, **kw):
         if self.enable_cuda:
             x = x.cuda()
-        return Variable(x)
+        return Variable(x, **kw)
     
     def reparameterize(self, mu, logvar):
         if self.training:
@@ -142,3 +142,14 @@ def train_vae(vae, data_loader, epochs, lr, results_cb=None):
                        "Total Loss: %.4f," % (total_loss.data[0]),
                        "Reconst Loss: %.4f," % (reconst_loss.data[0]),
                        "KL Div: %.7f" % (kl_divergence.data[0]))
+
+def eval_result(vae, dataloader):
+    batch_results = []
+    for i, stfted in enumerate(dataloader):
+        stfted = vae.to_var(stfted, volatile=True)
+        out, mu, log_var = vae(stfted)
+
+        batch_results.append(out.cpu())
+        del out, mu, log_var, stfted
+
+    return torch.cat(batch_results)

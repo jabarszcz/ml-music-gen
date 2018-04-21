@@ -1,6 +1,7 @@
 import librosa
-import matplotlib.pyplot as plt
 import numpy as np
+
+import matplotlib.pyplot as plt
 
 def plot(stfted, filename=None, show=False):
     plt.clf()

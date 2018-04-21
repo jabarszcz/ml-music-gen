@@ -79,8 +79,8 @@ def train(args):
 
     vae.eval()
     song_dataset = dataset.datasets[0]
+    res = eval_result(vae, DataLoader(song_dataset, 128))
     stft = song_dataset.stft
-    res, mu, log_var = vae(vae.to_var(song_dataset.tensor))
 
     newstfted = stft.tensor_to_real(res.data)
     print("loss:", stft.get_loss(newstfted))
