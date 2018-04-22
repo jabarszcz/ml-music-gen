@@ -64,18 +64,18 @@ def train(args):
     dataset = concat_stft_dataset(args.inputs, args.filter_length, args.hop_length)
     data_loader = DataLoader(dataset, 128, shuffle=True)
 
-    vae = VAE(args.filter_length/2 + 1, enable_cuda=args.cuda, filters=16, z_dim=512)
+    vae = VAE(args.filter_length/2 + 1, enable_cuda=args.cuda, filters=32, z_dim=512)
 
     with open('learning.csv', 'wb') as csvfile:
         fieldnames = ['epoch', 'epochs', 'iter', 'iters',
-                      'total_loss', 'reconst_loss', 'kl_divergence']
+                      'total_loss', 'reconst_loss', 'kl_loss']
         writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
         writer.writeheader()
 
         def write_data(data_dict):
             writer.writerow(data_dict)
 
-        train_vae(vae, data_loader, args.epochs, 0.03, results_cb=write_data)
+        train_vae(vae, data_loader, args.epochs, 0.004, results_cb=write_data)
 
     vae.eval()
     song_dataset = dataset.datasets[0]

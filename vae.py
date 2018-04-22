@@ -116,10 +116,10 @@ def train_vae(vae, data_loader, epochs, lr, results_cb=None):
 
             # Compute reconstruction loss and kl divergence
             reconst_loss = torch.sum(torch.mean((stfted - out)**2, 0))
-            kl_divergence = -0.5 * torch.mean(torch.sum(1 + log_var - mu.pow(2) - log_var.exp(), 1))
+            kl_loss = 0.5 * torch.sum(torch.mean(torch.exp(log_var) + mu**2 - 1. - log_var, 0))
         
             # Backprop + Optimize
-            total_loss = reconst_loss + kl_divergence
+            total_loss = reconst_loss + kl_loss
             optimizer.zero_grad()
             total_loss.backward()
             optimizer.step()
@@ -132,7 +132,7 @@ def train_vae(vae, data_loader, epochs, lr, results_cb=None):
                     'iters':iter_per_epoch,
                     'total_loss':total_loss.data[0],
                     'reconst_loss':reconst_loss.data[0],
-                    'kl_divergence':kl_divergence.data[0]
+                    'kl_loss':kl_loss.data[0]
                 }
                 results_cb(result_dict)
             
@@ -141,7 +141,7 @@ def train_vae(vae, data_loader, epochs, lr, results_cb=None):
                        "Step [%.4d/%d]," % (i+1, iter_per_epoch),
                        "Total Loss: %.4f," % (total_loss.data[0]),
                        "Reconst Loss: %.4f," % (reconst_loss.data[0]),
-                       "KL Div: %.7f" % (kl_divergence.data[0]))
+                       "KL Div: %.7f" % (kl_loss.data[0]))
 
 def eval_result(vae, dataloader):
     batch_results = []
