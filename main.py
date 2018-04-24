@@ -1,5 +1,5 @@
 from __future__ import print_function
-import argparse, sys, random
+import argparse, sys, random, itertools
 
 import torch
 from torch.utils.data import DataLoader
@@ -27,7 +27,7 @@ parser.add_argument(
     "--disable-cuda", action="store_true", help="Disable CUDA"
 )
 parser.add_argument(
-    "-i", "--inputs", action="append", help="Input files"
+    "-i", "--inputs", action="append", nargs='+', help="Input files"
 )
 parser.add_argument(
     "--filter_length", type=int, default=2048,
@@ -48,6 +48,7 @@ parser.add_argument(
 def main():
     args = parser.parse_args()
     args.cuda = not args.disable_cuda and torch.cuda.is_available()
+    args.inputs = list(itertools.chain(*args.inputs))
 
     if args.filter_length < args.hop_length:
         parser.error("Filter length must be greater than hop length",
