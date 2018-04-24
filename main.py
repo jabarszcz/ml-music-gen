@@ -1,5 +1,5 @@
 from __future__ import print_function
-import argparse, sys
+import argparse, sys, random
 
 import torch
 from torch.utils.data import DataLoader
@@ -60,26 +60,45 @@ def main():
     if args.epochs:
         train(args)
 
+def split_random_samplers(size, *proportions):
+    '''Make samplers that contain random subsets of given proportions
+
+    `proportions` is a list of ratios in [0,1[. The last proportion is
+    inferred.
+
+    '''
+    indices = range(size)
+    random.shuffle(indices)
+    lastidx = 0
+    for p in proportions:
+        newidx = lastidx + int(p * size)
+        yield indices[lastidx:newidx]
+        lastidx = newidx
+    yield indices[lastidx:]
+
 def train(args):
     dataset = concat_stft_dataset(args.inputs, args.filter_length, args.hop_length)
-    data_loader = DataLoader(dataset, 128, shuffle=True)
+
+    train_sampler, valid_sampler = split_random_samplers(len(dataset), 0.7)
+    train_loader = DataLoader(dataset, 128, sampler=train_sampler)
+    valid_loader = DataLoader(dataset, 128, sampler=valid_sampler)
 
     vae = VAE(args.filter_length/2 + 1, enable_cuda=args.cuda, filters=32, z_dim=512)
 
     with open('learning.csv', 'wb') as csvfile:
-        fieldnames = ['epoch', 'epochs', 'iter', 'iters',
-                      'total_loss', 'reconst_loss', 'kl_loss']
-        writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
-        writer.writeheader()
-
         def write_data(data_dict):
-            writer.writerow(data_dict)
+            if write_data.writer is None:
+                fieldnames = data_dict.keys()
+                write_data.writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+                write_data.writer.writeheader()
 
-        train_vae(vae, data_loader, args.epochs, 0.004, results_cb=write_data)
+            write_data.writer.writerow(data_dict)
+        write_data.writer = None
 
-    vae.eval()
+        train_vae(vae, train_loader, valid_loader, args.epochs, 0.004, results_cb=write_data)
+
     song_dataset = dataset.datasets[0]
-    res = eval_result(vae, DataLoader(song_dataset, 128))
+    res, _, _ = run_vae(vae, DataLoader(song_dataset, 128), keep_results=True)
     stft = song_dataset.stft
 
     newstfted = stft.tensor_to_real(res.data)

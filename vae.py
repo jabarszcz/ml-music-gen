@@ -19,7 +19,7 @@ class Unflatten(nn.Module):
     def __init__(self, n=1):
         super(Unflatten, self).__init__()
         self.n = n
-        
+
     def forward(self, x):
         return x.view(x.size()[0], self.n, -1)
 
@@ -60,7 +60,7 @@ class VAE(nn.Module):
         if self.enable_cuda:
             x = x.cuda()
         return Variable(x, **kw)
-    
+
     def reparameterize(self, mu, logvar):
         if self.training:
             std = logvar.mul(0.5).exp_()
@@ -68,14 +68,14 @@ class VAE(nn.Module):
             return eps.mul(std).add_(mu)
         else:
             return mu
-                     
+
     def forward(self, x):
         h = self.encoder(x)
         mu, log_var = torch.chunk(h, 2, dim=1)  # mean and log variance.
         z = self.reparameterize(mu, log_var)
         out = self.decoder(z)
         return out, mu, log_var
-    
+
     def sample(self, z):
         return self.decoder(z)
 
@@ -97,59 +97,83 @@ class VAE(nn.Module):
         layers.append(nn.LeakyReLU(LEAK))
         return nn.Sequential(*layers)
 
-def train_vae(vae, data_loader, epochs, lr, results_cb=None):
-    vae.train()
+def train_vae(vae, train_loader, valid_loader, epochs, lr, results_cb=None):
     optimizer = torch.optim.Adam(vae.parameters(), lr)
-    iter_per_epoch = len(data_loader)
     def adjust_learning_rate(epoch):
         lr_ = lr * (0.1 ** (epoch / 50.0))
         for param_group in optimizer.param_groups:
             param_group['lr'] = lr_
-            
+    def format_result_dict(r):
+        return ("Epoch [{epoch: 3}/{epochs}], "
+                "Training Losses "
+                "[total={train_total_loss}, "
+                "reconst={train_reconst_loss}, "
+                "kl={train_kl_loss}], "
+                "Validation Losses "
+                "[total={valid_total_loss}, "
+                "reconst={valid_reconst_loss}, "
+                "kl={valid_kl_loss}]"
+        ).format(**r)
+
+    print("Beginning training of the VAE")
     for epoch in range(epochs):
         adjust_learning_rate(epoch)
-        for i, stfted in enumerate(data_loader):
 
-            stfted = vae.to_var(stfted)
-            out, mu, log_var = vae(stfted)
-            batch_size = stfted.data.shape[0]
+        train_reconst_loss, train_kl_loss = run_vae(vae, train_loader, optimizer)
+        valid_reconst_loss, valid_kl_loss = run_vae(vae, valid_loader)
 
-            # Compute reconstruction loss and kl divergence
-            reconst_loss = torch.sum(torch.mean((stfted - out)**2, 0))
-            kl_loss = 0.5 * torch.sum(torch.mean(torch.exp(log_var) + mu**2 - 1. - log_var, 0))
-        
-            # Backprop + Optimize
-            total_loss = reconst_loss + kl_loss
+        if results_cb is not None:
+            result_dict = {
+                'epoch':epoch+1,
+                'epochs':epochs,
+                'train_total_loss':train_reconst_loss + train_kl_loss,
+                'train_reconst_loss':train_reconst_loss,
+                'train_kl_loss':train_kl_loss,
+                'valid_total_loss':valid_reconst_loss + valid_kl_loss,
+                'valid_reconst_loss':valid_reconst_loss,
+                'valid_kl_loss':valid_kl_loss
+            }
+            results_cb(result_dict)
+        print(format_result_dict(result_dict))
+
+def run_vae(vae, loader, optimizer=None, keep_results=False):
+    train = optimizer is not None
+    dataset_size = len(loader.dataset)
+    reconst_loss_mean = Mean(dataset_size)
+    kl_loss_mean = Mean(dataset_size)
+    vae.train(train)
+    batch_results = []
+
+    for i, stfted in enumerate(loader):
+        stfted = vae.to_var(stfted, volatile=not train)
+        out, mu, log_var = vae(stfted)
+        batch_size = stfted.data.shape[0]
+
+        # Compute reconstruction loss and kl divergence
+        reconst_loss = torch.sum(torch.mean((stfted - out)**2, 0))
+        kl_loss = 0.5 * torch.sum(torch.mean(torch.exp(log_var) + mu**2 - 1. - log_var, 0))
+
+        # Backprop + Optimize
+        total_loss = reconst_loss + kl_loss
+        if train:
             optimizer.zero_grad()
             total_loss.backward()
             optimizer.step()
+        elif keep_results:
+            batch_results.append(out.cpu())
 
-            if results_cb is not None:
-                result_dict = {
-                    'epoch':epoch+1,
-                    'epochs':epochs,
-                    'iter':i+1,
-                    'iters':iter_per_epoch,
-                    'total_loss':total_loss.data[0],
-                    'reconst_loss':reconst_loss.data[0],
-                    'kl_loss':kl_loss.data[0]
-                }
-                results_cb(result_dict)
-            
-            if i % 100 == 0:
-                print ("Epoch[%.2d/%d]," % (epoch+1, epochs),
-                       "Step [%.4d/%d]," % (i+1, iter_per_epoch),
-                       "Total Loss: %.4f," % (total_loss.data[0]),
-                       "Reconst Loss: %.4f," % (reconst_loss.data[0]),
-                       "KL Div: %.7f" % (kl_loss.data[0]))
+        reconst_loss_mean.append(reconst_loss.data[0], batch_size)
+        kl_loss_mean.append(kl_loss.data[0], batch_size)
 
-def eval_result(vae, dataloader):
-    batch_results = []
-    for i, stfted in enumerate(dataloader):
-        stfted = vae.to_var(stfted, volatile=True)
-        out, mu, log_var = vae(stfted)
+    if not keep_results:
+        return reconst_loss_mean.acc, kl_loss_mean.acc
+    else:
+        return torch.cat(batch_results), reconst_loss_mean.acc, kl_loss_mean.acc
 
-        batch_results.append(out.cpu())
-        del out, mu, log_var, stfted
+class Mean:
+    def __init__(self, total=None):
+        self.acc = 0
+        self.total = float(total)
 
-    return torch.cat(batch_results)
+    def append(self, num, denom):
+        self.acc += num * (float(denom) / self.total)
