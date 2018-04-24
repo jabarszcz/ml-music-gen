@@ -167,7 +167,7 @@ def train_vae(vae, train_loader, valid_loader, epochs, lr, results_cb=None):
 
 def run_vae(vae, loader, optimizer=None, keep_results=False):
     train = optimizer is not None
-    dataset_size = len(loader.dataset)
+    dataset_size = sum(len(batch) for batch in loader)
     reconst_loss_mean = Mean(dataset_size)
     kl_loss_mean = Mean(dataset_size)
     vae.train(train)
