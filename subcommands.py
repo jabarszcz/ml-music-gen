@@ -39,7 +39,7 @@ def train(args, parser):
             train_loader,
             valid_loader,
             args.epochs,
-            0.004,
+            0.015,
             results_cb=write_data
         )
 

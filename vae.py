@@ -128,7 +128,8 @@ def train_vae(vae, train_loader, valid_loader, epochs, lr, results_cb=None):
     optimizer = torch.optim.Adam(vae.parameters(), lr)
 
     def adjust_learning_rate(epoch):
-        lr_ = lr * (0.1 ** (epoch / 50.0))
+        lr_ = lr * (0.1 ** (epoch / 100.0))
+        print(lr_)
         for param_group in optimizer.param_groups:
             param_group['lr'] = lr_
 
