@@ -27,6 +27,10 @@ class Unflatten(nn.Module):
 class VAE(nn.Module):
     def __init__(self, freq_size=1025, filters=8, z_dim=256, enable_cuda=False):
         super(VAE, self).__init__()
+        self.freq_size = freq_size
+        self.filters = filters
+        self.z_dim = z_dim
+        self.enable_cuda = enable_cuda
         inter = freq_size / 16 * filters
         self.encoder = nn.Sequential(OrderedDict([ # if in (n, 1025, 2)
             ('conv1', VAE.conv(2, filters, 5, 2, 2)), # out (n, 513, 8)
@@ -52,9 +56,32 @@ class VAE(nn.Module):
             ('deconv5', VAE.deconv(filters*2, filters, 5, 2, 2)), # out (n, 513, 8)
             ('deconv6', VAE.deconv(filters, 2, 5, 2, 2, bn=False)), # out (n, 1025, 2)
         ]))
-        self.enable_cuda = enable_cuda
         if enable_cuda:
             self.cuda()
+
+    @staticmethod
+    def load(filename, enable_cuda=False):
+        state = torch.load(filename)
+        vae = VAE(state['freq_size'], state['filters'], state['z_dim'], enable_cuda)
+        vae.vae_load_state_dict(state)
+        return vae
+
+    def save(self, filename):
+        torch.save(self.vae_state_dict(), filename)
+
+    def vae_load_state_dict(self, state_dict):
+        self.freq_size = state_dict['freq_size']
+        self.filters = state_dict['filters']
+        self.z_dim = state_dict['z_dim']
+        self.load_state_dict(state_dict['model'])
+
+    def vae_state_dict(self):
+        return {
+            'freq_size':self.freq_size,
+            'filters':self.filters,
+            'z_dim':self.z_dim,
+            'model':self.state_dict()
+        }
 
     def to_var(self, x, **kw):
         if self.enable_cuda:
@@ -99,10 +126,12 @@ class VAE(nn.Module):
 
 def train_vae(vae, train_loader, valid_loader, epochs, lr, results_cb=None):
     optimizer = torch.optim.Adam(vae.parameters(), lr)
+
     def adjust_learning_rate(epoch):
         lr_ = lr * (0.1 ** (epoch / 50.0))
         for param_group in optimizer.param_groups:
             param_group['lr'] = lr_
+
     def format_result_dict(r):
         return ("Epoch [{epoch: 3}/{epochs}], "
                 "Training Losses "
@@ -115,7 +144,7 @@ def train_vae(vae, train_loader, valid_loader, epochs, lr, results_cb=None):
                 "kl={valid_kl_loss}]"
         ).format(**r)
 
-    print("Beginning training of the VAE")
+    print("Beginning to train the VAE")
     for epoch in range(epochs):
         adjust_learning_rate(epoch)
 
@@ -152,10 +181,10 @@ def run_vae(vae, loader, optimizer=None, keep_results=False):
         # Compute reconstruction loss and kl divergence
         reconst_loss = torch.sum(torch.mean((stfted - out)**2, 0))
         kl_loss = 0.5 * torch.sum(torch.mean(torch.exp(log_var) + mu**2 - 1. - log_var, 0))
-
-        # Backprop + Optimize
         total_loss = reconst_loss + kl_loss
+
         if train:
+            # Backprop + Optimize
             optimizer.zero_grad()
             total_loss.backward()
             optimizer.step()

@@ -1,14 +1,7 @@
 from __future__ import print_function
-import argparse, sys, random, itertools
+import argparse, itertools, logging
 
-import torch
-from torch.utils.data import DataLoader
-
-import librosa
-
-from experiments import *
-from musicdata import *
-from vae import *
+from subcommands import *
 
 # LOGGING
 logger = logging.getLogger()
@@ -19,93 +12,83 @@ myhandler.setFormatter(myformatter)
 logger.addHandler(myhandler)
 
 # PARSING
+# parser with common arguments for inputs
+parser_inputs = argparse.ArgumentParser(add_help=False)
+parser_inputs.add_argument(
+    "-i", "--inputs", action="append", nargs='+', default=[], help="Input files"
+)
+parser_inputs.add_argument(
+    "--filter_length", type=int, default=2048,
+    help="Length of the overlapping window for FFT"
+)
+parser_inputs.add_argument(
+    "--hop_length", type=int, default=None,
+    help="Stride of the overlapping window for FFT"
+)
+
+# parser with common pytorch arguments
+parser_pytorch = argparse.ArgumentParser(add_help=False)
+parser_pytorch.add_argument(
+    "--disable-cuda", action="store_true", help="Disable CUDA"
+)
+parser_pytorch.add_argument(
+    "-b", "--batch_size", type=int, default=128,
+    help="The batch size used for training or running the models"
+)
+
+# Top-level parser
 parser = argparse.ArgumentParser(
     description="An experimental attempt at music"
     " generation with deep learning techniques"
 )
-parser.add_argument(
-    "--disable-cuda", action="store_true", help="Disable CUDA"
+subparsers = parser.add_subparsers()
+
+# train sub-command
+parser_train = subparsers.add_parser(
+    "train",
+    description="Train a new VAE model",
+    parents=[parser_inputs, parser_pytorch]
 )
-parser.add_argument(
-    "-i", "--inputs", action="append", nargs='+', help="Input files"
-)
-parser.add_argument(
-    "--filter_length", type=int, default=2048,
-    help="Length of the overlapping window for FFT"
-)
-parser.add_argument(
-    "--hop_length", type=int, default=None,
-    help="Stride of the overlapping window for FFT"
-)
-parser.add_argument(
-    "-e", "--epochs", type=int, default=None,
+parser_train.set_defaults(func=train)
+parser_train.add_argument(
+    "-e", "--epochs", type=int, default=50,
     help="Maximum number of epochs for a run"
 )
-parser.add_argument(
-    "--experiments", action="store_true", help="Run data experiments"
+parser_train.add_argument(
+    "-m", "--model", default="model.pb", help="filename of the saved model"
 )
+
+# run sub-command
+parser_run = subparsers.add_parser(
+    "run",
+    description="Load and run an existing VAE model",
+    parents=[parser_inputs, parser_pytorch]
+)
+parser_run.set_defaults(func=run)
+parser_run.add_argument(
+    "model", help="filename of the loaded model"
+)
+
+# experiments parser
+parser_experiments = subparsers.add_parser(
+    "experiments",
+    description="Run some experiments on the data",
+    parents=[parser_inputs]
+)
+parser_experiments.set_defaults(func=experiments)
 
 def main():
     args = parser.parse_args()
-    args.cuda = not args.disable_cuda and torch.cuda.is_available()
-    args.inputs = list(itertools.chain(*args.inputs))
+    if 'inputs' in args:
+        args.inputs = list(itertools.chain(*args.inputs))
+        if args.filter_length < args.hop_length:
+            parser.error("Filter length must be greater than hop length",
+                         file=sys.stderr)
 
-    if args.filter_length < args.hop_length:
-        parser.error("Filter length must be greater than hop length",
-                     file=sys.stderr)
+    if 'disable_cuda' in args:
+        args.cuda = not args.disable_cuda and torch.cuda.is_available()
 
-    if args.experiments:
-        s = STFT(args.filter_length, args.hop_length, filename=args.inputs[0], deltas=False)
-        run_experiments(s)
-
-    if args.epochs:
-        train(args)
-
-def split_random_samplers(size, *proportions):
-    '''Make samplers that contain random subsets of given proportions
-
-    `proportions` is a list of ratios in [0,1[. The last proportion is
-    inferred.
-
-    '''
-    indices = range(size)
-    random.shuffle(indices)
-    lastidx = 0
-    for p in proportions:
-        newidx = lastidx + int(p * size)
-        yield indices[lastidx:newidx]
-        lastidx = newidx
-    yield indices[lastidx:]
-
-def train(args):
-    dataset = concat_stft_dataset(args.inputs, args.filter_length, args.hop_length)
-
-    train_sampler, valid_sampler = split_random_samplers(len(dataset), 0.7)
-    train_loader = DataLoader(dataset, 128, sampler=train_sampler)
-    valid_loader = DataLoader(dataset, 128, sampler=valid_sampler)
-
-    vae = VAE(args.filter_length/2 + 1, enable_cuda=args.cuda, filters=32, z_dim=512)
-
-    with open('learning.csv', 'wb') as csvfile:
-        def write_data(data_dict):
-            if write_data.writer is None:
-                fieldnames = data_dict.keys()
-                write_data.writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
-                write_data.writer.writeheader()
-
-            write_data.writer.writerow(data_dict)
-        write_data.writer = None
-
-        train_vae(vae, train_loader, valid_loader, args.epochs, 0.004, results_cb=write_data)
-
-    song_dataset = dataset.datasets[0]
-    res, _, _ = run_vae(vae, DataLoader(song_dataset, 128), keep_results=True)
-    stft = song_dataset.stft
-
-    newstfted = stft.tensor_to_real(res.data)
-    print("loss:", stft.get_loss(newstfted))
-    stft.plot(newstfted, filename="result.png")
-    stft.save("result.wav", data=newstfted)
+    args.func(args, parser)
 
 if __name__ == "__main__":
     main()

@@ -1,3 +1,5 @@
+import random
+
 import librosa
 import torch
 import numpy as np
@@ -128,3 +130,19 @@ class STFTDataset(Dataset):
 def concat_stft_dataset(inputs, filter_len, hop_len):
     sets = [STFTDataset(STFT(filter_len, hop_len, filename=i)) for i in inputs]
     return ConcatDataset(sets)
+
+def split_random_samplers(size, *proportions):
+    '''Make samplers that contain random subsets of given proportions
+
+    `proportions` is a list of ratios in [0,1[. The last proportion is
+    inferred.
+
+    '''
+    indices = range(size)
+    random.shuffle(indices)
+    lastidx = 0
+    for p in proportions:
+        newidx = lastidx + int(p * size)
+        yield indices[lastidx:newidx]
+        lastidx = newidx
+    yield indices[lastidx:]
