@@ -124,15 +124,9 @@ class VAE(nn.Module):
         layers.append(nn.LeakyReLU(LEAK))
         return nn.Sequential(*layers)
 
-def train_vae(vae, train_loader, valid_loader, epochs, lr, results_cb=None):
-    optimizer = torch.optim.Adam(vae.parameters(), lr)
-
-    def adjust_learning_rate(epoch):
-        lr_ = lr * (0.1 ** (epoch / 100.0))
-        print(lr_)
-        for param_group in optimizer.param_groups:
-            param_group['lr'] = lr_
-
+def train_vae(vae, train_loader, valid_loader, epochs, results_cb=None,
+              optimizer=None, scheduler=None,
+              early_stopping=True, patience=10):
     def format_result_dict(r):
         return ("Epoch [{epoch: 3}/{epochs}], "
                 "Training Losses "
@@ -146,11 +140,16 @@ def train_vae(vae, train_loader, valid_loader, epochs, lr, results_cb=None):
         ).format(**r)
 
     print("Beginning to train the VAE")
+    best_valid_loss = float('inf')
+    best_for = 0
     for epoch in range(epochs):
-        adjust_learning_rate(epoch)
+        scheduler.step()
 
         train_reconst_loss, train_kl_loss = run_vae(vae, train_loader, optimizer)
         valid_reconst_loss, valid_kl_loss = run_vae(vae, valid_loader)
+
+        train_total_loss = train_reconst_loss + train_kl_loss
+        valid_total_loss = valid_reconst_loss + valid_kl_loss
 
         if results_cb is not None:
             result_dict = {
@@ -165,6 +164,16 @@ def train_vae(vae, train_loader, valid_loader, epochs, lr, results_cb=None):
             }
             results_cb(result_dict)
         print(format_result_dict(result_dict))
+
+        if valid_total_loss < best_valid_loss:
+            best_valid_loss = valid_total_loss
+            best_for = 0
+        else:
+            best_for += 1
+
+        if best_for > patience:
+            break
+
 
 def run_vae(vae, loader, optimizer=None, keep_results=False):
     train = optimizer is not None

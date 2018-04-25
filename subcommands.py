@@ -3,6 +3,7 @@ import sys
 
 import torch
 from torch.utils.data import DataLoader
+from torch.optim.lr_scheduler import LambdaLR
 
 from experiments import *
 from musicdata import *
@@ -34,13 +35,19 @@ def train(args, parser):
             write_data.writer.writerow(data_dict)
         write_data.writer = None
 
+        optimizer = torch.optim.Adam(vae.parameters(), args.lr)
+        scheduler = LambdaLR(optimizer, [lambda epoch: 0.1 ** (epoch/100.0)])
+
         train_vae(
             vae,
             train_loader,
             valid_loader,
             args.epochs,
-            0.015,
-            results_cb=write_data
+            results_cb=write_data,
+            optimizer=optimizer,
+            scheduler=scheduler,
+            early_stopping=args.early_stopping,
+            patience=args.patience
         )
 
     vae.save(args.model)
@@ -65,16 +72,18 @@ def run(args, parser):
         stft.save("result.wav", data=newstfted)
 
 def experiments(args, parser):
-    s = STFT(
-        args.filter_length,
-        args.hop_length,
-        filename=args.inputs[0],
-        deltas=False
-    )
-    run_experiments(s)
+    # Experiments are run on the first input file only
+    dataset = make_dataset(args, parser)
+    run_experiments(dataset.datasets[0].stft)
 
 def make_dataset(args, parser):
     if not len(args.inputs) > 0:
         parser.error("There should be at least an input song to run the model",
                      file=sys.stderr)
-    return concat_stft_dataset(args.inputs, args.filter_length, args.hop_length)
+    mode = STFT.REPR_STRINGS.index(args.representation)
+    return concat_stft_dataset(
+        args.inputs,
+        filter_len=args.filter_length,
+        hop_len=args.hop_length,
+        mode=mode
+    )

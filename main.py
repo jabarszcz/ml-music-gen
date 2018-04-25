@@ -2,6 +2,7 @@ from __future__ import print_function
 import argparse, itertools, logging
 
 from subcommands import *
+from musicdata import *
 
 # LOGGING
 logger = logging.getLogger()
@@ -24,6 +25,11 @@ parser_inputs.add_argument(
 parser_inputs.add_argument(
     "--hop_length", type=int, default=None,
     help="Stride of the overlapping window for FFT"
+)
+parser_inputs.add_argument(
+    "-r", "--representation", default="delta",
+    choices=STFT.REPR_STRINGS,
+    help="Representation of the stft used for learning"
 )
 
 # parser with common pytorch arguments
@@ -56,6 +62,15 @@ parser_train.add_argument(
 )
 parser_train.add_argument(
     "-m", "--model", default="model.pb", help="filename of the saved model"
+)
+parser_train.add_argument(
+    "--lr", default=0.015, type=float, help="Learning rate"
+)
+parser_train.add_argument(
+    "-s", "--early-stopping", action="store_true", help="Activate early stopping"
+)
+parser_train.add_argument(
+    "-p", "--patience", default=10, type=int, help="Patience for early stopping"
 )
 
 # run sub-command
