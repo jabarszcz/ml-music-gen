@@ -78,6 +78,7 @@ def run(args, parser):
             return os.path.join(dirname, template.format(filename))
         losses_path = mkpath('losses_{}.csv')
         spectrogram_path = mkpath("spectrogram_{}.png")
+        spectrogram_diff_path = mkpath("spectrogram_diff_{}.png")
         out_path = mkpath("out_{}.wav")
 
         logging.info("Losses for {}: {}".format(filename, metrics_dict))
@@ -91,6 +92,14 @@ def run(args, parser):
             "Saving spectrogram for {} to {}".format(filename, spectrogram_path)
         )
         stft.plot(newstfted, filename=spectrogram_path)
+
+        logging.info(
+            "Saving difference spectrogram for {} to {}".format(
+                filename,
+                spectrogram_diff_path
+            )
+        )
+        stft.plot(newstfted, filename=spectrogram_diff_path, difference=True)
 
         logging.info(
             "Saving decoded version of {} to {}".format(filename, out_path)

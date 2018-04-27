@@ -63,10 +63,14 @@ class STFT:
             hop_length=self.hop_len
         )
 
-    def plot(self, data=None, filename=None, show=False):
+    def plot(self, data=None, filename=None, show=False, difference=False):
         real = data if data is not None else self.real
         stfted = self.real_to_stft(real)
-        spectrogram.plot(stfted, filename=filename, show=show)
+        if data is not None and difference:
+            stfted = self.stfted - stfted
+        else:
+            difference = False
+        spectrogram.plot(stfted, filename=filename, show=show, diff=difference)
 
     def get_loss(self, data=None):
         """Calculate the MSE on the original audio wave"""
