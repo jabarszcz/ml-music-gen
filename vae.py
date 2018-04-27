@@ -32,7 +32,7 @@ class VAE(nn.Module):
         self.filters = filters
         self.z_dim = z_dim
         self.enable_cuda = enable_cuda
-        inter = freq_size / 16 * filters
+        inter = freq_size / 32 * filters
         self.encoder = nn.Sequential(OrderedDict([ # if in (n, 1025, 2)
             ('conv1', VAE.conv(2, filters, 5, 2, 2)), # out (n, 513, 8)
             ('conv2', VAE.conv(filters, filters*2, 5, 2, 2)), # out (n, 257, 16)
@@ -41,13 +41,13 @@ class VAE(nn.Module):
             ('conv5', VAE.conv(filters*4, filters*4, 5, 2, 2)), # out (n, 33, 32)
             ('conv6', VAE.conv(filters*4, filters*4, 5, 2)), # out (n, 16, 32)
             ('flat', Flatten()), # out (n, 512)
-            ('fc1', nn.Linear(inter, inter)),
+            ('fc1', nn.Linear(2*inter, inter)),
             ('relu', nn.ReLU()),
             ('fc2', nn.Linear(inter, 2 * z_dim)) # 2 for mean and variance.
         ]))
 
         self.decoder = nn.Sequential(OrderedDict([ # if in (n, z_dim)
-            ('fc', nn.Linear(z_dim, inter)), # out (n, 512)
+            ('fc', nn.Linear(z_dim, inter*2)), # out (n, 512)
             ('relu', nn.ReLU()),
             ('unflat', Unflatten(filters*4)), # out (n, 16, 32)
             ('deconv1', VAE.deconv(filters*4, filters*4, 5, 2)), # out (n, 33, 32)

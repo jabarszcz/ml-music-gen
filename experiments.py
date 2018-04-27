@@ -31,8 +31,8 @@ experiments = [
     ("phases_zero", phases_zero),
     ("phases_small_noise", phases_noise(0.1)),
     ("phases_big_noise", phases_noise(0.5)),
-    ("freqs_small_noise", freqs_noise(0.1)),
-    ("freqs_big_noise", freqs_noise(0.5)),
+    ("amplitude_small_noise", freqs_noise(0.1)),
+    ("amplitude_big_noise", freqs_noise(0.5)),
 ]
 
 @contextmanager

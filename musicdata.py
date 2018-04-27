@@ -21,7 +21,7 @@ class STFT:
     def __init__(self, filter_len=2048, hop_len=None,
                  signal=None, filename=None, samplerate=None, mode=None, mode2=None):
         self.filter_len = filter_len
-        self.hop_len = hop_len
+        self.hop_len = hop_len if hop_len is not None else filter_len / 4
         self.samplerate = samplerate
         self.mode = mode if mode is not None else STFT.MODE_DELTA
         self.mode2 = mode2 if mode2 is not None else STFT.MODE2_MAG
@@ -75,7 +75,7 @@ class STFT:
             stfted = self.stfted - stfted
         else:
             difference = False
-        spectrogram.plot(stfted, filename=filename, show=show, diff=difference)
+        spectrogram.plot(self, stfted, filename=filename, show=show, diff=difference)
 
     def get_loss(self, data=None):
         """Calculate the MSE on the original audio wave"""
@@ -103,6 +103,8 @@ class STFT:
             return self.power_to_db(self.mag_to_power(real))
         elif self.mode2 == STFT.MODE2_POWER:
             return self.mag_to_power(real)
+        else:
+            return real
 
     def real_to_stft(self, real):
         if self.mode2 == STFT.MODE2_DB:
