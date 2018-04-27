@@ -14,12 +14,17 @@ class STFT:
     MODE_DELTA=1
     MODE_COMPLEX=2
 
+    MODE2_MAG=0
+    MODE2_POWER=1
+    MODE2_DB=2
+
     def __init__(self, filter_len=2048, hop_len=None,
-                 signal=None, filename=None, samplerate=None, mode=None):
+                 signal=None, filename=None, samplerate=None, mode=None, mode2=None):
         self.filter_len = filter_len
         self.hop_len = hop_len
         self.samplerate = samplerate
         self.mode = mode if mode is not None else STFT.MODE_DELTA
+        self.mode2 = mode2 if mode2 is not None else STFT.MODE2_MAG
         if signal is not None:
             self.set_signal(signal)
         elif filename is not None:
@@ -89,19 +94,44 @@ class STFT:
 
     def stft_to_real(self, stft):
         if self.mode == STFT.MODE_PHASE:
-            return self.stft_to_polar(stft)
+            real = self.stft_to_polar(stft)
         elif self.mode == STFT.MODE_DELTA:
-            return self.to_deltas(self.stft_to_polar(stft))
+            real = self.to_deltas(self.stft_to_polar(stft))
         else:
-            return self.stft_to_rect(stft)
+            real = self.stft_to_rect(stft)
+        if self.mode2 == STFT.MODE2_DB:
+            return self.power_to_db(self.mag_to_power(real))
+        elif self.mode2 == STFT.MODE2_POWER:
+            return self.mag_to_power(real)
 
     def real_to_stft(self, real):
+        if self.mode2 == STFT.MODE2_DB:
+            real = self.power_to_mag(self.db_to_power(real))
+        elif self.mode2 == STFT.MODE2_POWER:
+            real = self.power_to_mag(real)
         if self.mode == STFT.MODE_PHASE:
             return self.polar_to_stft(real)
         elif self.mode == STFT.MODE_DELTA:
             return self.polar_to_stft(self.from_deltas(real))
         else:
             return self.rect_to_stft(real)
+
+    @staticmethod
+    def mag_to_power(real):
+        return np.stack([real[:,:,0]**2, real[:,:,1]], axis=2)
+
+    @staticmethod
+    def power_to_mag(real):
+        return np.stack([real[:,:,0]**0.5, real[:,:,1]], axis=2)
+
+    @staticmethod
+    def power_to_db(real):
+        return np.stack([np.log(np.maximum(1e-10,real[:,:,0])), real[:,:,1]],
+                        axis=2)
+
+    @staticmethod
+    def db_to_power(real):
+        return np.stack([np.exp(real[:,:,0]), real[:,:,1]], axis=2)
 
     @staticmethod
     def to_deltas(real):
