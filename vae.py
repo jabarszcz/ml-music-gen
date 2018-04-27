@@ -1,5 +1,6 @@
 from __future__ import print_function
 from collections import OrderedDict
+import logging
 
 import torch
 import torch.nn as nn
@@ -61,12 +62,20 @@ class VAE(nn.Module):
 
     @staticmethod
     def load(filename, enable_cuda=False):
-        state = torch.load(filename)
-        vae = VAE(state['freq_size'], state['filters'], state['z_dim'], enable_cuda)
+        logging.info("Loading VAE model from {}, cuda={}".format(filename, enable_cuda))
+        state = torch.load(
+            filename,
+            map_location=lambda storage, loc:(
+                storage.cuda() if enable_cuda else storage
+            )
+        )
+        vae = VAE(state['freq_size'], state['filters'], state['z_dim'],
+                  enable_cuda)
         vae.vae_load_state_dict(state)
         return vae
 
     def save(self, filename):
+        logging.info("Saving VAE model to {}".format(filename))
         torch.save(self.vae_state_dict(), filename)
 
     def vae_load_state_dict(self, state_dict):
@@ -139,7 +148,7 @@ def train_vae(vae, train_loader, valid_loader, epochs, results_cb=None,
                 "kl={valid_kl_loss}]"
         ).format(**r)
 
-    print("Beginning to train the VAE")
+    logging.info("Beginning to train the VAE")
     best_valid_loss = float('inf')
     best_for = 0
     for epoch in range(epochs):

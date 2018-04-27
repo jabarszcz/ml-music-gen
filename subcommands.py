@@ -1,5 +1,5 @@
 from __future__ import print_function
-import sys
+import logging, os, sys
 
 import torch
 from torch.utils.data import DataLoader
@@ -62,14 +62,40 @@ def run(args, parser):
             DataLoader(song_dataset, args.batch_size),
             keep_results=True
         )
+
         stft = song_dataset.stft
         newstfted = stft.tensor_to_real(res.data)
-        print("total loss:", reconst_loss + kl_loss)
-        print("reconstruction loss:", reconst_loss)
-        print("KL loss:", kl_loss)
-        print("signal loss:", stft.get_loss(newstfted))
-        stft.plot(newstfted, filename="result.png")
-        stft.save("result.wav", data=newstfted)
+        metrics_dict = {
+            'total_loss':reconst_loss + kl_loss,
+            'reconst_loss':reconst_loss,
+            'kl_loss':kl_loss,
+            'signal_loss':stft.get_loss(newstfted)
+        }
+
+        # Save all the things
+        dirname, filename = os.path.split(stft.filename)
+        def mkpath(template):
+            return os.path.join(dirname, template.format(filename))
+        losses_path = mkpath('losses_{}.csv')
+        spectrogram_path = mkpath("spectrogram_{}.png")
+        out_path = mkpath("out_{}.wav")
+
+        logging.info("Losses for {}: {}".format(filename, metrics_dict))
+        logging.info("Saving losses for {} to {}".format(filename, losses_path))
+        with open(losses_path, 'wb') as csvfile:
+            writer = csv.DictWriter(csvfile, fieldnames=metrics_dict.keys())
+            writer.writeheader()
+            writer.writerow(metrics_dict)
+
+        logging.info(
+            "Saving spectrogram for {} to {}".format(filename, spectrogram_path)
+        )
+        stft.plot(newstfted, filename=spectrogram_path)
+
+        logging.info(
+            "Saving decoded version of {} to {}".format(filename, out_path)
+        )
+        stft.save(out_path, data=newstfted)
 
 def experiments(args, parser):
     # Experiments are run on the first input file only

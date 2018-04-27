@@ -31,6 +31,7 @@ class STFT:
         self.real = self.stft_to_real(self.stfted)
 
     def load(self, filename):
+        self.filename = filename
         signal, self.samplerate = librosa.load(filename, sr=self.samplerate)
         self.set_signal(signal)
 
